@@ -1,7 +1,7 @@
 /*
  * Author:      Cooper Brotherton
- * Date:        February 4, 2021
- * Libraries:   GPIO and Timer32 from DriverLib
+ * Date:        February 5, 2021
+ * Libraries:   GPIO, I2C, UART, and Timer32 from DriverLib
  */
 /******************************************************************************
  * MSP432 Project 6 ECE230 Winter 2020-2021
@@ -34,7 +34,7 @@
 #define ACCEL_CONFIG        0x1C
 #define PWR_MGMT            0x6B
 
-/* Variables */
+// Variables
 const uint8_t TXData[] = { 0x04 };
 static uint8_t RXData[NUM_OF_REC_BYTES];
 static volatile uint32_t xferIndex;
@@ -68,8 +68,7 @@ void setup(void)
     WDT_A_holdTimer();
 
     // P1.6 for UCB0SIMO/UCB0SDA, P1.7 for UCB0SOMI/UCB0SCL for I2C
-    GPIO_setAsPeripheralModuleFunctionInputPin(
-    GPIO_PORT_P1,
+    GPIO_setAsPeripheralModuleFunctionInputPin(GPIO_PORT_P1,
                                                GPIO_PIN6 + GPIO_PIN7,
                                                GPIO_PRIMARY_MODULE_FUNCTION);
     stopSent = false;
@@ -85,11 +84,7 @@ void setup(void)
         ;
     I2C_masterSendMultiByteStart(EUSCI_B0_BASE, PWR_MGMT);
     I2C_masterSendMultiByteFinish(EUSCI_B0_BASE, 0);
-    // AFS_SEL = 2, pg 13 MPU-6000/MPU-6050 Product Specification
-    // ACCEL_CONFIG, pg 15 MPU-6000/MPU-6050 Register Map and descriptions
-    // Register 0x1C
-    // Data: XA_ST, YA_ST, ZA_ST, AFS_SEL[1:0], -, -, -
-    // Data: 0, 0, 0, [1, 0], 0, 0, 0
+    // Set in ±4g mode
     while (I2C_masterIsStopSent(EUSCI_B0_BASE))
         ;
     I2C_masterSendMultiByteStart(EUSCI_B0_BASE, ACCEL_CONFIG);
@@ -97,7 +92,7 @@ void setup(void)
 
     // P1.2 and P1.3 in UART mode
     GPIO_setAsPeripheralModuleFunctionInputPin(GPIO_PORT_P1,
-    GPIO_PIN2 | GPIO_PIN3,
+                                               GPIO_PIN2 | GPIO_PIN3,
                                                GPIO_PRIMARY_MODULE_FUNCTION);
 
     CS_setDCOCenteredFrequency(CS_DCO_FREQUENCY_12);
@@ -115,6 +110,44 @@ void setup(void)
     Interrupt_enableMaster();
 }
 
+/*!
+ * \brief This function transmits a string from the UART module
+ *
+ * \param moduleInstance is the instance of the eUSCI A (UART) module.
+ *          Valid parameters vary from part to part, but can include:
+ *          - EUSCI_A0_BASE
+ *          - EUSCI_A1_BASE
+ *          - EUSCI_A2_BASE
+ *          - EUSCI_A3_BASE
+ *
+ *  It is important to note that for eUSCI modules, only "A" modules such as
+ *  EUSCI_A0 can be used. "B" modules such as EUSCI_B0 do not support the UART
+ *  mode
+ *
+ *  \param transmitData data to be transmitted from the UART module
+ *
+ *  \param length is the length of the String being sent
+ *
+ *  \return None
+ */
+void UART_transmitString(uint32_t moduleInstance, char *transmitData,
+                         int length)
+{
+    int i;
+    for (i = 0; i < length; i++)
+    {
+        UART_transmitData(moduleInstance, transmitData[i]);
+    }
+}
+
+/*!
+ * \brief This function samples and displays the accelerometer data at 1Hz
+ *
+ * This function takes the data from the accelerometer buffers and transmits the
+ * data of the X, Y, and Z-axis over UART once every second.
+ *
+ * \return None
+ */
 void loop(void)
 {
     while (TIMER32_1->VALUE != 0)
@@ -132,15 +165,7 @@ void loop(void)
     char num[10] = { '0', '1', '2', '3', '4', '5', '6', '7', '8', '9' };
 
     // print values
-    UART_transmitData(EUSCI_A0_BASE, 'A');
-    UART_transmitData(EUSCI_A0_BASE, 'c');
-    UART_transmitData(EUSCI_A0_BASE, 'c');
-    UART_transmitData(EUSCI_A0_BASE, 'e');
-    UART_transmitData(EUSCI_A0_BASE, 'l');
-    UART_transmitData(EUSCI_A0_BASE, '_');
-    UART_transmitData(EUSCI_A0_BASE, 'X');
-    UART_transmitData(EUSCI_A0_BASE, ':');
-    UART_transmitData(EUSCI_A0_BASE, ' ');
+    UART_transmitString(EUSCI_A0_BASE, "Accel_X: ", 9);
 
     if (accel_x < 0)
         UART_transmitData(EUSCI_A0_BASE, '-');
@@ -150,19 +175,12 @@ void loop(void)
     UART_transmitData(EUSCI_A0_BASE, num[abs(accel_x * 10 / 4096 % 10)]);
     UART_transmitData(EUSCI_A0_BASE, num[abs(accel_x * 100 / 4096 % 10)]);
     UART_transmitData(EUSCI_A0_BASE, num[abs(accel_x * 1000 / 4096 % 10)]);
+
     UART_transmitData(EUSCI_A0_BASE, ' ');
     UART_transmitData(EUSCI_A0_BASE, 'g');
     UART_transmitData(EUSCI_A0_BASE, '\t');
 
-    UART_transmitData(EUSCI_A0_BASE, 'A');
-    UART_transmitData(EUSCI_A0_BASE, 'c');
-    UART_transmitData(EUSCI_A0_BASE, 'c');
-    UART_transmitData(EUSCI_A0_BASE, 'e');
-    UART_transmitData(EUSCI_A0_BASE, 'l');
-    UART_transmitData(EUSCI_A0_BASE, '_');
-    UART_transmitData(EUSCI_A0_BASE, 'Y');
-    UART_transmitData(EUSCI_A0_BASE, ':');
-    UART_transmitData(EUSCI_A0_BASE, ' ');
+    UART_transmitString(EUSCI_A0_BASE, "Accel_Y: ", 9);
     if (accel_y < 0)
         UART_transmitData(EUSCI_A0_BASE, '-');
     UART_transmitData(EUSCI_A0_BASE, num[abs(accel_y / 4096)]);
@@ -174,15 +192,7 @@ void loop(void)
     UART_transmitData(EUSCI_A0_BASE, 'g');
     UART_transmitData(EUSCI_A0_BASE, '\t');
 
-    UART_transmitData(EUSCI_A0_BASE, 'A');
-    UART_transmitData(EUSCI_A0_BASE, 'c');
-    UART_transmitData(EUSCI_A0_BASE, 'c');
-    UART_transmitData(EUSCI_A0_BASE, 'e');
-    UART_transmitData(EUSCI_A0_BASE, 'l');
-    UART_transmitData(EUSCI_A0_BASE, '_');
-    UART_transmitData(EUSCI_A0_BASE, 'Z');
-    UART_transmitData(EUSCI_A0_BASE, ':');
-    UART_transmitData(EUSCI_A0_BASE, ' ');
+    UART_transmitString(EUSCI_A0_BASE, "Accel_Z: ", 9);
     if (accel_z < 0)
         UART_transmitData(EUSCI_A0_BASE, '-');
     UART_transmitData(EUSCI_A0_BASE, num[abs(accel_z / 4096)]);
@@ -216,8 +226,8 @@ int main(void)
 /*!
  * \brief This function receives the accelerometer data from the GY-521
  *
- * This function receives bytes from the GY-521 into the buffer. Once all the data
- * has been received, send a STOP condition.
+ * This function receives bytes from the GY-521 into the buffer. Once all the
+ * data has been received, sends a STOP condition.
  *
  * \return None
  */
